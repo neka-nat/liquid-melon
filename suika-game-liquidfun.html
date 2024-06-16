@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiquidFun.js and p5.js Suika Game Demo</title>
+    <script src="lfjs/liquidfun.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        let world;
+        let particleSystem;
+        const scale = 50;
+        const width = 400;
+        const height = 600;
+
+        const fruitTypes = [
+            { name: "さくらんぼ", radius: 0.1, color: [180, 0, 0], restitution: 1.0, strength: 1.0 },
+            { name: "いちご", radius: 0.15, color: [255, 0, 0], restitution: 0.8, strength: 0.8 },
+            { name: "ぶどう", radius: 0.2, color: [128, 0, 128], restitution: 0.7, strength: 0.7 },
+            { name: "デコポン", radius: 0.3, color: [255, 165, 0], restitution: 0.6, strength: 0.6 },
+            { name: "かき", radius: 0.5, color: [255, 69, 0], restitution: 0.5, strength: 0.5 },
+            { name: "りんご", radius: 0.8, color: [255, 0, 0], restitution: 0.5, strength: 0.4 },
+            { name: "なし", radius: 1.0, color: [255, 255, 0], restitution: 0.4, strength: 0.4 },
+            { name: "もも", radius: 1.3, color: [255, 192, 203], restitution: 0.4, strength: 0.3 },
+            { name: "パイナップル", radius: 1.7, color: [255, 255, 0], restitution: 0.3, strength: 0.3 },
+            { name: "メロン", radius: 2.0, color: [152, 251, 152], restitution: 0.2, strength: 0.2 },
+            { name: "スイカ", radius: 2.5, color: [0, 255, 0], restitution: 0.1, strength: 0.1 }
+        ];
+
+        let currentFruitIndex = 0;
+        let fruitGroups = [];
+        let mergeSet = new Set();
+
+        function setup() {
+            createCanvas(width, height);
+            
+            // Initialize the world
+            world = new b2World(new b2Vec2(0, -10));
+
+            // Create a boundary box
+            let bodyDef = new b2BodyDef();
+            let ground = world.CreateBody(bodyDef);
+            let shape = new b2EdgeShape();
+            shape.Set(new b2Vec2(0, 0), new b2Vec2(width / scale, 0));
+            ground.CreateFixtureFromShape(shape, 0.0);
+            shape.Set(new b2Vec2(0, 0), new b2Vec2(0, height / scale));
+            ground.CreateFixtureFromShape(shape, 0.0);
+            shape.Set(new b2Vec2(width / scale, 0), new b2Vec2(width / scale, height / scale));
+            ground.CreateFixtureFromShape(shape, 0.0);
+
+            var listener = {
+                BeginContactBody: function(contact) {},
+                EndContactBody: function(contact) {},
+                PostSolve: function(contact, impulse) {},
+                PreSolve: function(contact, oldManifold) {},
+                BeginContactParticleBody : function(particleSystem, particleBodyContact) {},
+                BeginContactParticle : function(particleSystem, particleContact) {
+                    let indexA = getParticleGroup(particleSystem, particleContact.GetIndexA());
+                    let indexB = getParticleGroup(particleSystem, particleContact.GetIndexB());
+                    if (indexA == indexB) {
+                        return;
+                    }
+                    if (indexA === -1 || indexB === -1) {
+                        return;
+                    }
+                    if (fruitGroups[indexA] === undefined || fruitGroups[indexB] === undefined) {
+                        return;
+                    }
+                    let type1 = fruitGroups[indexA].typeIndex;
+                    let type2 = fruitGroups[indexB].typeIndex;
+                    if (type1 === type2) {
+                        mergeSet.add(JSON.stringify([Math.min(indexA, indexB), Math.max(indexA, indexB)]));
+                        return;  // Only allow one merge per frame
+                    }
+                },
+                EndContactParticleBody : function(fixture, particleSystem, index) {},
+                EndContactParticle : function(particleSystem, indexA, indexB) {}
+            };
+            world.SetContactListener(listener);
+
+            // Create particle system
+            let psd = new b2ParticleSystemDef();
+            psd.radius = 0.1;
+            particleSystem = world.CreateParticleSystem(psd);
+        }
+
+        function draw() {
+            background(240);
+            
+            // Update physics
+            world.Step(1/60, 32, 12);
+            let indices = [];
+            for (let pair of mergeSet) {
+                let [indexA, indexB] = JSON.parse(pair);
+                mergeFruits(indexA, indexB);
+                indices.push(indexA);
+                indices.push(indexB);
+            }
+            mergeSet.clear();
+            indices.sort((a, b) => b - a);
+            for (let i of indices) {
+                fruitGroups.splice(i, 1);
+            }
+
+            // Draw particles
+            drawParticles();
+            
+            // Draw boundary
+            noFill();
+            stroke(0);
+            rect(0, 0, width, height);
+
+            // Draw next fruit
+            let nextFruit = fruitTypes[currentFruitIndex];
+            fill(nextFruit.color);
+            ellipse(mouseX, 20, nextFruit.radius * 2 * scale, nextFruit.radius * 2 * scale);
+        }
+
+        function drawParticles() {
+            let particles = particleSystem.GetPositionBuffer();
+            let colors = particleSystem.GetColorBuffer();
+            noStroke();
+            for (let i = 0; i < particles.length; i += 2) {
+                let x = particles[i] * scale;
+                let y = height - particles[i+1] * scale;
+                let r = colors[i * 2];
+                let g = colors[i * 2 + 1];
+                let b = colors[i * 2 + 2];
+                fill(r, g, b);
+                ellipse(x, y, 5, 5);
+            }
+        }
+
+        function mouseClicked() {
+            if (mouseY > 40) {  // Prevent creating fruits too high
+                createFruit(mouseX / scale, (height - mouseY) / scale);
+            }
+        }
+
+        function createFruit(x, y) {
+            let fruit = fruitTypes[currentFruitIndex];
+            
+            // Create a new particle group
+            let circle = new b2CircleShape();
+            circle.position.Set(x, y);
+            circle.radius = fruit.radius;
+
+            let pgd = new b2ParticleGroupDef();
+            pgd.flags = b2_elasticParticle | b2_particleContactListenerParticle | b2_fixtureContactListenerParticle;
+            pgd.groupFlags = b2_solidParticleGroup;
+            pgd.shape = circle;
+            pgd.color.Set(fruit.color[0], fruit.color[1], fruit.color[2], 255);
+            pgd.strength = fruit.strength;
+            pgd.restitution = fruit.restitution;
+
+            let group = particleSystem.CreateParticleGroup(pgd);
+
+            // Store the fruit type index with the group
+            fruitGroups.push({ group: group, typeIndex: currentFruitIndex });
+
+            // Move to next fruit type
+            currentFruitIndex = (currentFruitIndex + 1) % 11;
+        }
+
+        function getParticleGroup(particleSystem, ix) {
+            for (let i = 0; i < particleSystem.particleGroups.length; ++i) {
+                let pg = particleSystem.particleGroups[i];
+                let offset = pg.GetBufferIndex();
+                if (offset <= ix && ix < offset + pg.GetParticleCount()) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function calcParticleCenter(particleSystem, index) {
+            let particles = particleSystem.GetPositionBuffer();
+            let pg = particleSystem.particleGroups[index];
+            let offset = pg.GetBufferIndex();
+            let x = 0;
+            let y = 0;
+            for (let j = 0; j < pg.GetParticleCount(); j++) {
+                let px = particles[offset * 2 + j * 2];
+                let py = particles[offset * 2 + j * 2 + 1];
+                x += px;
+                y += py;
+            }
+            x /= pg.GetParticleCount();
+            y /= pg.GetParticleCount();
+            return { x: x, y: y };
+        }
+
+        function mergeFruits(index1, index2) {
+            let group1 = fruitGroups[index1].group;
+            let group2 = fruitGroups[index2].group;
+            let typeIndex = fruitGroups[index1].typeIndex;
+
+            // Only merge if there's a next fruit type
+            if (typeIndex < fruitTypes.length - 1) {
+                let newTypeIndex = typeIndex + 1;
+                let newFruit = fruitTypes[newTypeIndex];
+
+                // Calculate the new position (average of the two groups)
+                let center1 = calcParticleCenter(particleSystem, index1);
+                let center2 = calcParticleCenter(particleSystem, index2);
+                let newX = (center1.x + center2.x) / 2;
+                let newY = (center1.y + center2.y) / 2;
+
+                // Remove old groups
+                group1.DestroyParticles(false);
+                group2.DestroyParticles(false);
+                fruitGroups[index1] = fruitGroups[index2] = undefined;
+
+                // Create new, larger fruit
+                createFruit(newX, newY);
+                fruitGroups[fruitGroups.length - 1].typeIndex = newTypeIndex;
+            }
+        }
+
+        function keyPressed() {
+            if (keyCode === LEFT_ARROW) {
+                currentFruitIndex = (currentFruitIndex - 1 + fruitTypes.length) % fruitTypes.length;
+            } else if (keyCode === RIGHT_ARROW) {
+                currentFruitIndex = (currentFruitIndex + 1) % fruitTypes.length;
+            }
+        }
+    </script>
+</body>
+</html>

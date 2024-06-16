@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiquidFun.js Simple Demo</title>
+    <script src="http://google.github.io/liquidfun/testbed/liquidfun.js"></script>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="400" height="400"></canvas>
+    <script>
+        // Initialize the world (注意: 重力を上向きに設定)
+        var world = new b2World(new b2Vec2(0, -10));
+
+        // Create a boundary box
+        var bodyDef = new b2BodyDef();
+        var ground = world.CreateBody(bodyDef);
+        var shape = new b2EdgeShape();
+        shape.Set(new b2Vec2(0, 0), new b2Vec2(40, 0));
+        ground.CreateFixtureFromShape(shape, 0.0);
+        shape.Set(new b2Vec2(0, 0), new b2Vec2(0, 40));
+        ground.CreateFixtureFromShape(shape, 0.0);
+        shape.Set(new b2Vec2(40, 0), new b2Vec2(40, 40));
+        ground.CreateFixtureFromShape(shape, 0.0);
+        shape.Set(new b2Vec2(0, 40), new b2Vec2(40, 40));  // 上部の境界を追加
+        ground.CreateFixtureFromShape(shape, 0.0);
+
+        // Create particles
+        var psd = new b2ParticleSystemDef();
+        psd.radius = 0.1;
+        var particleSystem = world.CreateParticleSystem(psd);
+
+        var circle = new b2CircleShape();
+        circle.position.Set(20, 35);  // Y座標を調整
+        circle.radius = 3;
+
+        var pgd = new b2ParticleGroupDef();
+        pgd.flags = b2_springParticle
+        pgd.groupFlags = b2_solidParticleGroup;
+        pgd.shape = circle;
+        var group = particleSystem.CreateParticleGroup(pgd);
+
+        // Rendering
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+        var scale = 10;
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.scale(scale, -scale);  // Y軸を反転
+            ctx.translate(0, -40);  // 座標系を調整
+
+            var particles = particleSystem.GetPositionBuffer();
+            for (var i = 0; i < particles.length; i += 2) {
+                var x = particles[i];
+                var y = particles[i+1];
+                ctx.beginPath();
+                ctx.arc(x, y, 0.1, 0, 2 * Math.PI);
+                ctx.fillStyle = 'blue';
+                ctx.fill();
+            }
+
+            // Draw ground
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(40, 0);
+            ctx.lineTo(40, 40);
+            ctx.lineTo(0, 40);
+            ctx.closePath();
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function update() {
+            world.Step(1/60, 8, 3);
+            render();
+            requestAnimationFrame(update);
+        }
+
+        update();
+    </script>
+</body>
+</html>
