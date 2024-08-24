@@ -1,6 +1,3 @@
-# Liquid Melon
+# Liquid Melon [WIP]
 
-```bash
-yarn install
-yarn start
-```
+![demo](demo1.gif)
